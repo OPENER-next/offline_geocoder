@@ -1,6 +1,16 @@
-// TODO: Put public facing types in this file.
+import 'package:latlong2/latlong.dart';
 
-/// Checks if you are awesome. Spoiler: you are.
-class Awesome {
-  bool get isAwesome => true;
+import 'area.dart';
+
+
+T? firstGeoFeatureContainingPoint<T extends GeoFeatureBase>(LatLng point, Iterable<T> geoFeatures) {
+  for (final feature in geoFeatures) {
+    if (feature.area.containsPoint(point)) return feature;
+  }
+  return null;
+}
+
+abstract class GeoFeatureBase {
+  final Area area;
+  const GeoFeatureBase(this.area);
 }

@@ -7,9 +7,6 @@ builders:
         - .dart
     build_to: source
     auto_apply: dependents
-    
-
-
-
-      
-        
+    defaults:
+      options:
+        extract_properties: {}

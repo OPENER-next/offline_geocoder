@@ -1,21 +1,12 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+// ignore_for_file: avoid_print
+import 'package:example/offline_geocoder/geo_feature_collection.dart';
+import 'package:latlong2/latlong.dart';
+
+
 void main() {
-
-  runApp(const MainApp());
+  final geoCoder = GeoCoder();
+  final result = geoCoder.getFromLocation(LatLng(45.992979, 8.961235));
+  print(result?.sovereignt);
+  print(result?.isoA2);
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
-    );
-  }
-}

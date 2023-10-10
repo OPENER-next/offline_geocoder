@@ -9,11 +9,10 @@ class GeoFeatureBuilder implements Builder{
 
   @override
   Map<String, List<String>> get buildExtensions => {
-    options.config['source_file'] : ['lib/offline_geocoder/geo_feature_collection.dart']
+    options.config['source_file'] : ['${options.config['output_file_location']}geo_feature_collection.dart']
   };
 
-  final Map<String, String> propertiesToExtract = {};
-  late String dataFolderPath;
+  late Map<dynamic, dynamic> propertiesToExtract ;
   final List<Map<String, dynamic>> finalGeoFeatureList = [];
   final BuilderOptions options;
 
@@ -26,34 +25,17 @@ class GeoFeatureBuilder implements Builder{
 
     try {
         final features = await featuresFromGeoJsonFile(File(inputId.path));
-        readConfiguration();
+        propertiesToExtract = options.config['extract_properties'];
         extractData(features);
         final String code = createClass();
         final lastSegment = inputId.uri.pathSegments.last;
         final outputId = AssetId(inputId.package, inputId.path
-          .replaceFirst(inputId.path.toString().replaceAll(lastSegment, ''), 'lib/offline_geocoder/')
+          .replaceFirst(inputId.path.toString().replaceAll(lastSegment, ''), options.config['output_file_location'])
           .replaceFirst(lastSegment, 'geo_feature_collection.dart'),
         );
         await buildStep.writeAsString(outputId, code);
     } catch (e) {
         print('Failed to generate class: $e');
-    }
-  }
-
-  void readConfiguration(){
-
-    final extractedProperties = options.config['extract_properties']
-                          .toString()
-                          .replaceAll('[', '')
-                          .replaceAll(']', '')
-                          .replaceAll('{', '')
-                          .replaceAll('}', '')
-                          .split(',');
-    for (final element in extractedProperties) {
-      final property = element.split(':');
-      if (property.length == 2){
-        propertiesToExtract.addAll({property[0].trim() : property[1].trim()});
-      }
     }
   }
 
@@ -65,91 +47,112 @@ class GeoFeatureBuilder implements Builder{
       }
       if (feature.geometry.runtimeType == GeoJsonPolygon){
         final polygon = convertPolygonData(feature.geometry);
-        extractedProperties.addAll({'area': 'MultiPolygon([$polygon])'});
+        extractedProperties.addAll({'area': refer('MultiPolygon')
+          .newInstance([literalList([[polygon]])])});
       }
       else if (feature.geometry.runtimeType == GeoJsonMultiPolygon){
-        final List<String> polygons = [];
-        for (final geopPolygon in feature.geometry.polygons) {
-          polygons.add(convertPolygonData(geopPolygon));
+        final polygons = [];
+        for (final geoPolygon in feature.geometry.polygons) {
+          final polygon = convertPolygonData(geoPolygon);
+          polygons.add(polygon);
         }
-        extractedProperties.addAll({'area': 'MultiPolygon($polygons)'});
+        extractedProperties.addAll({'area': refer('MultiPolygon').newInstance([literalList([polygons])])});
       } 
       finalGeoFeatureList.add(extractedProperties);
     }
   }
 
-  String convertPolygonData(GeoJsonPolygon geoJsonPolygon){
-    late List<String> outer = [];
-      final List<String> inner = [];
-      for (int index = 0; index < geoJsonPolygon.geoSeries.length; index++) {
-        final List<String> points = [];
-        for (final geopoint in geoJsonPolygon.geoSeries[index].geoPoints){
-          points.add('LatLng(${geopoint.latitude},${geopoint.longitude})');
-        }
-        index == 0 ? outer = points : inner.add('Ring($points)');
+  dynamic convertPolygonData(GeoJsonPolygon geoJsonPolygon){
+    late dynamic outer,inner;
+    final dynamic listRings = [];
+    for (int index = 0; index < geoJsonPolygon.geoSeries.length; index++) {
+      final points = [];
+      for (final geopoint in geoJsonPolygon.geoSeries[index].geoPoints){
+        points.add(refer('LatLng').newInstance([literalNum(geopoint.latitude),literalNum(geopoint.longitude)]));
       }
-    return 'Polygon(Ring($outer),$inner)';
-  }
+      index == 0 ? 
+        outer = refer('Ring').newInstance([literalList([points])]) :
+        listRings.add(refer('Ring').newInstance([literalList([points])]));
+    }
+
+    if(listRings.isEmpty){
+      inner = literalList([[]]);
+    }
+    else{
+      inner = literalList([listRings]);
+    }
+    return refer('Polygon').newInstance([refer(outer.toString()), refer(inner.toString())]);
+}
 
   String createClass(){
+    final library = Library((b) => b
+      ..directives.add(Directive.import('package:offline_geocoder/offline_geocoder.dart'))
+      ..directives.add(Directive.import('package:latlong2/latlong.dart'))
+      ..body.addAll([geoFeatureClass().build(), geoCoderClass().build()]));
 
-    final List<Field> classFields = [];
-    final List<Parameter> constructorParameters = [];
+    final dartfmt = DartFormatter();
+    return dartfmt.format('${library.accept(DartEmitter.scoped())}').toString();
+  }
 
-    propertiesToExtract.forEach((key, value) { 
-      classFields.add(Field((b) => b
+  ClassBuilder geoFeatureClass(){
+
+    final classFields = propertiesToExtract.entries.map((entry) { 
+      return Field((b) => b
         ..modifier = FieldModifier.final$
-        ..name = ReCase(key).camelCase 
-        ..type = Reference(value,'dart:core').type));
-      constructorParameters.add(Parameter((b) => b
-          ..name = ReCase(key).camelCase
-          ..named = true
-          ..toThis = true));
+        ..name = ReCase(entry.key).camelCase 
+        ..type = Reference(entry.value,'dart:core').type);
     });
-    constructorParameters.add(Parameter((b) => b
-            ..name = 'area'
-            ..named = true
-            ..toSuper = true
-    ));
 
-    final geoFeatureClass = ClassBuilder()
+    final constructorParameters = propertiesToExtract.entries.map((entry) {
+      return Parameter((b) => b
+        ..name = ReCase(entry.key).camelCase
+        ..named = true
+        ..toThis = true);
+    });
+
+    return ClassBuilder()
       ..name = 'GeoFeature'
       ..extend = refer('GeoFeatureBase')
       ..fields.addAll(classFields)
       ..constructors.add(Constructor((b) => b
         ..constant = true
         ..requiredParameters.addAll(constructorParameters)
+        ..requiredParameters.add(Parameter((b) => b
+          ..name = 'area'
+          ..named = true
+          ..toSuper = true))
       ));
+  }
 
-    final geoFeatureCollection = finalGeoFeatureList.map((e) {
-      var constructor = '';
+  ClassBuilder geoCoderClass(){
+
+     final geoFeatures = finalGeoFeatureList.map((e) {
+      final List<Reference> geoFeatureParameters = [];
       for (final key in propertiesToExtract.keys) {
-          final propertyValue = propertiesToExtract[key] == 'String' 
-          ? '\'${e[ReCase(key).camelCase].toString()}\',' 
-          : '${e[ReCase(key).camelCase].toString()},';
-           constructor = '$constructor $propertyValue';
+          propertiesToExtract[key] == 'String' 
+          ? geoFeatureParameters.add(refer("'${e[ReCase(key).camelCase]}'"))
+          : geoFeatureParameters.add(refer('${e[ReCase(key).camelCase]}'));
       }
-      constructor = '$constructor ${e['area']}';
-      return 'GeoFeature($constructor)';
+      geoFeatureParameters.add(e['area']);
+      return refer('GeoFeature').newInstance(geoFeatureParameters);
     }).toList();
 
-    final geoFeatureCollectionClass = ClassBuilder()
-      ..name = 'GeoFeatureCollection'
-      ..extend = refer('GeoFeatureCollectionBase')
+    print(geoFeatures.toString());
+    return ClassBuilder()
+      ..name = 'GeoCoder'
       ..constructors.add(Constructor((b) => b))
       ..fields.add(Field((b) => b
-        ..name = 'geoFeatureCollection'
+        ..name = 'Test'
         ..modifier = FieldModifier.final$
-        ..assignment = Code(geoFeatureCollection.toString())
-        ..type = refer('List<GeoFeature>')
-      ));
-
-    final library = Library((b) => b
-      ..directives.add(Directive.import('package:offline_geocoder/offline_geocoder.dart'))
-      ..directives.add(Directive.import('package:latlong2/latlong.dart'))
-      ..body.addAll([geoFeatureClass.build(), geoFeatureCollectionClass.build()]));
-
-    final dartfmt = DartFormatter();
-    return dartfmt.format('${library.accept(DartEmitter.scoped())}').toString();
-  } 
+        ..assignment = literalList([geoFeatures], refer('List<GeoFeature>')).code))
+      ..methods.add(Method((b) => b
+        ..name = 'getFromLocation'
+        //..static = true 
+        ..returns = refer('GeoFeature?')
+        ..requiredParameters.add(Parameter((b) => b
+          ..name = 'point'
+          ..type = refer('LatLng')))
+        ..body = refer('firstGeoFeatureContainingPoint<GeoFeature>').call([refer('point'), refer('geoFeatures')]).code))
+    ;
+  }
 }

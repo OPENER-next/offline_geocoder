@@ -2,10 +2,10 @@ targets:
   $default:
     builders:
       offline_geocoder:geoFeatureBuilder:
-        enabled: true
         options:
-          source_file: 'assets/ne_10m_admin_0_countries_lakes.geojson'
-          extract_properties: [{"SOVEREIGNT": "String"}, {"ISO_A2": "String"}, {"LEVEL": "int"}]
+          source_file: 'assets/ne_110m_admin_0_countries_short copy.geojson'
+          output_file_location: 'lib/offline_geocoder/'
+          extract_properties: {"SOVEREIGNT": "String", "ISO_A2": "String", "LEVEL": "int"}
 
 
 

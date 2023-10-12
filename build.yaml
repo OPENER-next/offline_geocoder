@@ -1,5 +1,5 @@
 builders:
-  geoFeatureBuilder:
+  offline_geocoder:
     import: package:offline_geocoder/offline_geocoder.dart
     builder_factories: ['geoFeatureBuilder']
     build_extensions: 
@@ -9,4 +9,6 @@ builders:
     auto_apply: dependents
     defaults:
       options:
+        source_file: ''
+        output_file: ''
         extract_properties: {}

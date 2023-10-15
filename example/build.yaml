@@ -1,7 +1,7 @@
 targets:
   $default:
     builders:
-      offline_geocoder:offline_geocoder:
+      offline_geocoder:
         options:
           source_file: 'assets/ne_110m_admin_0_countries.geojson'
           output_file: 'lib/offline_geocoder/offline_geocoder.dart'

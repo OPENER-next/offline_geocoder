@@ -9,6 +9,5 @@ builders:
     auto_apply: dependents
     defaults:
       options:
-        source_file: ''
-        output_file: ''
+        output_file: 'lib/offline_geocoder.dart'
         extract_properties: {}

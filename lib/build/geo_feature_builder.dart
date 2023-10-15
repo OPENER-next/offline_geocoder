@@ -5,6 +5,7 @@ import 'package:build/build.dart';
 import 'package:code_builder/code_builder.dart';
 import 'package:dart_style/dart_style.dart';
 import 'package:recase/recase.dart';
+import 'package:yaml/yaml.dart';
 
 class GeoFeatureBuilder implements Builder{
 
@@ -35,6 +36,18 @@ class GeoFeatureBuilder implements Builder{
     }
   }
 
+  String generateFileCode(LiteralListExpression geoFeatureList, YamlMap propertiesToExtract){
+    final geoFeatureClass = buildGeoFeatureClass(propertiesToExtract);
+    final geoCoderClass = buildGeoCoderClass(geoFeatureList);
+    final library = Library((b) => b
+      ..directives.add(Directive.import('package:offline_geocoder/offline_geocoder.dart'))
+      ..directives.add(Directive.import('package:latlong2/latlong.dart'))
+      ..body.addAll([geoFeatureClass, geoCoderClass]
+    ));
+    final dartfmt = DartFormatter();
+    return dartfmt.format('${library.accept(DartEmitter.scoped())}').toString();
+  }
+
   Future<Map<String, dynamic>> _readFile(File inputFile) async {
 
     if (!inputFile.existsSync()) {
@@ -50,76 +63,73 @@ class GeoFeatureBuilder implements Builder{
     }
   }
 
-  List<Map<String, dynamic>> buildGeoFeatureListInstance(Map<String, dynamic> geoJSONData, dynamic propertiesToExtract) {
-
+  LiteralListExpression buildGeoFeatureListInstance(Map<String, dynamic> geoJSONData, YamlMap propertiesToExtract) {
     final features = geoJSONData['features'] as List<dynamic>;
-    final List<Map<String, dynamic>> geoFeatureList = [];
-
+    final geoFeatureRefer = refer('GeoFeature');
+    final List<Expression> geoFeatureList = [];
     for (final Map<String, dynamic> featureData in features) {
-      final Map<String, dynamic> extractedProperties = {};
+      final List<Expression> geoFeatureParameters = [];
       if (featureData.containsKey('properties')) {
         final Map<String, dynamic> featureProperties = featureData['properties'];
         for (final key in propertiesToExtract.keys) {
-          extractedProperties.addAll({ReCase(key).camelCase : featureProperties[key]});
+          propertiesToExtract[key] == 'String' 
+          ? geoFeatureParameters.add(refer('"${featureProperties[key]}"'))
+          : geoFeatureParameters.add(refer('${featureProperties[key]}'));
         }
       }
       final geometry = featureData['geometry'] as Map<String, dynamic>;
-      final geometryType = geometry['type'].toString();
-      final coordinates = geometry['coordinates'] as List<dynamic>;
-      switch (geometryType) {
-        case 'MultiPolygon':
-          final List<Expression> polygons = [];
-          for (final List<dynamic> geoPolygons in coordinates) {
-            final polygon = buildPolygonInstance(geoPolygons);
-            polygons.add(polygon);
-          }
-          extractedProperties.addAll({'area': buildMultiPolygonInstance(polygons)});
-        case 'Polygon':
-          final polygon = buildPolygonInstance(coordinates);
-          extractedProperties.addAll({'area': buildMultiPolygonInstance([polygon])});
-        default:
-          throw 'The geometry type: $geometryType is not supported';
-      }
-      geoFeatureList.add(extractedProperties);
+      geoFeatureParameters.add(buildMultiPolygonInstance(geometry));
+      geoFeatureList.add(geoFeatureRefer.newInstance(geoFeatureParameters));
     } 
-    return geoFeatureList;
+    return literalList(geoFeatureList);
   }
 
-  Expression buildMultiPolygonInstance(List<Expression> polygons) {
+  Expression buildMultiPolygonInstance(Map<String, dynamic> geometry) {
+    final geometryType = geometry['type'].toString();
+    final coordinates = geometry['coordinates'] as List<dynamic>;
     final multiPolygonRefer = refer('MultiPolygon');
-    return multiPolygonRefer.newInstance([literalList(polygons)]);
+    switch (geometryType) {
+      case 'MultiPolygon':
+        final List<Expression> polygons = [];
+        for (final List<dynamic> geoPolygons in coordinates) {
+          final polygon = buildPolygonInstance(geoPolygons);
+          polygons.add(polygon);
+        }
+        return multiPolygonRefer.newInstance([literalList(polygons)]);
+      case 'Polygon':
+        final polygon = buildPolygonInstance(coordinates);
+        return multiPolygonRefer.newInstance([literalList([polygon])]);
+      default:
+        throw 'The geometry type: $geometryType is not supported';
+    }
   }
 
   Expression buildPolygonInstance(List<dynamic> geoPolygons) {
     late Expression outer;
-    late List<Expression> inner;
-    final List<Expression> listPoints = [];
-    final List<Expression> listRings = [];
-
-    for (int index = 0; index < geoPolygons.length; index++) {
-      listPoints.clear();
-      for (final List<dynamic> geoPoint in geoPolygons[index]){
-        final latitude = geoPoint[0];
-        final longitude = geoPoint[1];
-        listPoints.add(buildLatLngInstance(latitude, longitude));
-      }
-
-    index == 0 ? 
-        outer = buildRingInstance(listPoints) :
-        listRings.add(buildRingInstance(listPoints));
-    }
-
-    if(listRings.isEmpty){
-      inner = [buildRingInstance([])];
-    }
- 
+    final List<Expression> inner = [];
     final polygonRefer = refer('Polygon');
-    return polygonRefer.newInstance([outer, literalList(inner)]);
+    geoPolygons.asMap().forEach((index, coordinates) {
+      index == 0 ? 
+          outer = buildRingInstance(coordinates) :
+          inner.add(buildRingInstance(coordinates));
+    });
+    if(inner.isEmpty){
+      return polygonRefer.newInstance([outer]);
+    }
+    else{
+      return polygonRefer.newInstance([outer, literalList(inner)]);
+    }
   }
 
-  Expression buildRingInstance(List<Expression> latLngInstances) {
+  Expression buildRingInstance(List<dynamic> coordinates) {
     final ringRefer = refer('Ring');
-    return ringRefer.newInstance([literalList(latLngInstances)]);
+    final List<Expression> listPoints = [];
+    for (final List<dynamic> geoPoint in coordinates){
+      final latitude = geoPoint[1];
+      final longitude = geoPoint[0];
+      listPoints.add(buildLatLngInstance(latitude, longitude));
+    }
+    return ringRefer.newInstance([literalList(listPoints)]);
   }
 
   Expression buildLatLngInstance(num latitude, num longitude) {
@@ -127,22 +137,9 @@ class GeoFeatureBuilder implements Builder{
     return latLngRef.newInstance([literalNum(latitude),literalNum(longitude)]);
   }
 
-  String generateFileCode(List<Map<String, dynamic>> geoFeatureList, dynamic propertiesToExtract){
-    final geoFeatureClass = buildGeoFeatureClass(propertiesToExtract);
-    final geoCoderClass = buildGeoCoderClass(geoFeatureList,propertiesToExtract);
-    final library = Library((b) => b
-      ..directives.add(Directive.import('package:offline_geocoder/offline_geocoder.dart'))
-      ..directives.add(Directive.import('package:latlong2/latlong.dart'))
-      ..body.addAll([geoFeatureClass, geoCoderClass]
-    ));
-    final dartfmt = DartFormatter();
-    return dartfmt.format('${library.accept(DartEmitter.scoped())}').toString();
-  }
-
-  Class buildGeoFeatureClass(dynamic propertiesToExtract) {
+  Class buildGeoFeatureClass(YamlMap propertiesToExtract) {
     final List<Field> classFields = [];
     final List<Parameter> constructorParameters = [];
-
     propertiesToExtract.forEach((key, value) { 
       classFields.add(Field((b) => b
           ..modifier = FieldModifier.final$
@@ -174,26 +171,14 @@ class GeoFeatureBuilder implements Builder{
     return geoFeatureClass.build();
   }
 
-  Class buildGeoCoderClass(List<Map<String, dynamic>> geoFeatureList, dynamic propertiesToExtract) {
-     final geoFeatureRefer = refer('GeoFeature');
-     final List<Expression> geoFeatures = geoFeatureList.map((e) {
-     final List<Expression> geoFeatureParameters = [];
-      for (final key in propertiesToExtract.keys) {
-          propertiesToExtract[key] == 'String' 
-          ? geoFeatureParameters.add(refer('"${e[ReCase(key).camelCase]}"'))
-          : geoFeatureParameters.add(refer('${e[ReCase(key).camelCase]}'));
-      }
-      geoFeatureParameters.add(e['area']);
-      return geoFeatureRefer.newInstance(geoFeatureParameters);
-    }).toList(); 
-
+  Class buildGeoCoderClass(LiteralListExpression geoFeatureList) {
     final geoCoderClass = ClassBuilder()
       ..name = 'GeoCoder'
       ..fields.add(Field((b) => b
         ..name = 'geoFeatures'
         ..modifier = FieldModifier.constant
         ..static = true
-        ..assignment = literalList(geoFeatures).code
+        ..assignment = geoFeatureList.code
       ))
       ..methods.add(Method((b) => b
         ..name = 'getFromLocation'

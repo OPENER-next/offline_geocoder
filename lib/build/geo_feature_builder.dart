@@ -5,7 +5,6 @@ import 'package:build/build.dart';
 import 'package:code_builder/code_builder.dart';
 import 'package:dart_style/dart_style.dart';
 import 'package:recase/recase.dart';
-import 'package:yaml/yaml.dart';
 
 class GeoFeatureBuilder implements Builder{
 
@@ -24,7 +23,9 @@ class GeoFeatureBuilder implements Builder{
 
     try {
         final geoJSONData = await _readFile(File(inputId.path));
-        final propertiesToExtract = options.config['extract_properties'];
+        final propertiesToExtract = options.config['extract_properties'].map<String,String>(
+            (key, value) => MapEntry<String, String>(key.toString(), value.toString())
+        );
         final geoFeatureList = buildGeoFeatureListInstance(geoJSONData, propertiesToExtract);
         final code = generateFileCode(geoFeatureList,propertiesToExtract);
         final outputId = AssetId(inputId.package, inputId.path
@@ -36,7 +37,7 @@ class GeoFeatureBuilder implements Builder{
     }
   }
 
-  String generateFileCode(LiteralListExpression geoFeatureList, YamlMap propertiesToExtract){
+  String generateFileCode(LiteralListExpression geoFeatureList, Map<String, String> propertiesToExtract){
     final geoFeatureClass = buildGeoFeatureClass(propertiesToExtract);
     final geoCoderClass = buildGeoCoderClass(geoFeatureList);
     final library = Library((b) => b
@@ -63,21 +64,21 @@ class GeoFeatureBuilder implements Builder{
     }
   }
 
-  LiteralListExpression buildGeoFeatureListInstance(Map<String, dynamic> geoJSONData, YamlMap propertiesToExtract) {
-    final features = geoJSONData['features'] as List<dynamic>;
+  LiteralListExpression buildGeoFeatureListInstance(Map<String, dynamic> geoJSONData, Map<String, String> propertiesToExtract) {
+    final features = geoJSONData['features'].cast<Map<String, dynamic>>(); 
     final geoFeatureRefer = refer('GeoFeature');
     final List<Expression> geoFeatureList = [];
-    for (final Map<String, dynamic> featureData in features) {
+    for (final featureData in features) {
       final List<Expression> geoFeatureParameters = [];
       if (featureData.containsKey('properties')) {
-        final Map<String, dynamic> featureProperties = featureData['properties'];
+        final featureProperties = featureData['properties'];
         for (final key in propertiesToExtract.keys) {
           propertiesToExtract[key] == 'String' 
           ? geoFeatureParameters.add(refer('"${featureProperties[key]}"'))
           : geoFeatureParameters.add(refer('${featureProperties[key]}'));
         }
       }
-      final geometry = featureData['geometry'] as Map<String, dynamic>;
+      final geometry = featureData['geometry'];
       geoFeatureParameters.add(buildMultiPolygonInstance(geometry));
       geoFeatureList.add(geoFeatureRefer.newInstance(geoFeatureParameters));
     } 
@@ -86,12 +87,12 @@ class GeoFeatureBuilder implements Builder{
 
   Expression buildMultiPolygonInstance(Map<String, dynamic> geometry) {
     final geometryType = geometry['type'].toString();
-    final coordinates = geometry['coordinates'] as List<dynamic>;
+    final coordinates = geometry['coordinates'];
     final multiPolygonRefer = refer('MultiPolygon');
     switch (geometryType) {
       case 'MultiPolygon':
         final List<Expression> polygons = [];
-        for (final List<dynamic> geoPolygons in coordinates) {
+        for (final geoPolygons in coordinates) {
           final polygon = buildPolygonInstance(geoPolygons);
           polygons.add(polygon);
         }
@@ -108,11 +109,15 @@ class GeoFeatureBuilder implements Builder{
     late Expression outer;
     final List<Expression> inner = [];
     final polygonRefer = refer('Polygon');
-    geoPolygons.asMap().forEach((index, coordinates) {
-      index == 0 ? 
-          outer = buildRingInstance(coordinates) :
-          inner.add(buildRingInstance(coordinates));
-    });
+    final polygonGeometry = geoPolygons.map<Iterable<List<num>>>(
+            (e) => (e as Iterable).map<List<num>>((e) => e.cast<num>()),
+          );
+    final iterator = polygonGeometry.iterator;
+    iterator.moveNext();
+    outer = buildRingInstance(iterator.current);
+    while(iterator.moveNext()) {
+      inner.add(buildRingInstance(iterator.current));
+    } 
     if(inner.isEmpty){
       return polygonRefer.newInstance([outer]);
     }
@@ -121,10 +126,10 @@ class GeoFeatureBuilder implements Builder{
     }
   }
 
-  Expression buildRingInstance(List<dynamic> coordinates) {
+  Expression buildRingInstance(Iterable<List<num>>coordinates) {
     final ringRefer = refer('Ring');
     final List<Expression> listPoints = [];
-    for (final List<dynamic> geoPoint in coordinates){
+    for(final geoPoint in coordinates){
       final latitude = geoPoint[1];
       final longitude = geoPoint[0];
       listPoints.add(buildLatLngInstance(latitude, longitude));
@@ -137,7 +142,7 @@ class GeoFeatureBuilder implements Builder{
     return latLngRef.newInstance([literalNum(latitude),literalNum(longitude)]);
   }
 
-  Class buildGeoFeatureClass(YamlMap propertiesToExtract) {
+  Class buildGeoFeatureClass(Map<String, String> propertiesToExtract) {
     final List<Field> classFields = [];
     final List<Parameter> constructorParameters = [];
     propertiesToExtract.forEach((key, value) { 

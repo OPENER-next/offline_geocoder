@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 
 void main() {
-  final result = GeoCoder.getFromLocation(const LatLng(45.992979, 8.961235));
+  final result = GeoCoder.getFromLocation(const LatLng(-18.1248, 178.4501));
   print(result?.sovereignt);
   print(result?.isoA2);
 }

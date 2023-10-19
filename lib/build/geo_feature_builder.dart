@@ -20,7 +20,6 @@ class GeoFeatureBuilder implements Builder{
   @override
   Future<void> build(BuildStep buildStep) async {
     final AssetId inputId = buildStep.inputId;
-
     try {
         final geoJSONData = await _readFile(File(inputId.path));
         final propertiesToExtract = options.config['extract_properties'].map<String,String>(
@@ -50,7 +49,6 @@ class GeoFeatureBuilder implements Builder{
   }
 
   Future<Map<String, dynamic>> _readFile(File inputFile) async {
-
     if (!inputFile.existsSync()) {
       throw FileSystemException('The file ${inputFile.path} does not exist');
     }
@@ -58,7 +56,6 @@ class GeoFeatureBuilder implements Builder{
     try {
       data = await inputFile.readAsString();
       return json.decode(data) as Map<String, dynamic>;
-
     } catch (e) {
       throw FileSystemException('The file $e can not be read');
     }
@@ -79,40 +76,44 @@ class GeoFeatureBuilder implements Builder{
         }
       }
       final geometry = featureData['geometry'];
-      geoFeatureParameters.add(buildMultiPolygonInstance(geometry));
+      final geometryType = geometry['type'].toString();
+      final coordinates = geometry['coordinates'] as List<dynamic>;
+      switch (geometryType) {
+        case 'MultiPolygon':
+          final multiPolygons = coordinates.map<Iterable<Iterable<List<num>>>>(
+            (e) => (e as Iterable).map<Iterable<List<num>>>(
+              (e) => (e as Iterable).map<List<num>>((e) => e.cast<num>()),
+            )
+          );
+          geoFeatureParameters.add(buildMultiPolygonInstance(multiPolygons));
+        case 'Polygon':
+          final geoPolygons = coordinates.map<Iterable<List<num>>>(
+            (e) => (e as Iterable).map<List<num>>((e) => e.cast<num>()),
+          );
+          geoFeatureParameters.add(buildPolygonInstance(geoPolygons));
+        default:
+          throw 'The geometry type: $geometryType is not supported';
+      }
       geoFeatureList.add(geoFeatureRefer.newInstance(geoFeatureParameters));
     } 
     return literalList(geoFeatureList);
   }
 
-  Expression buildMultiPolygonInstance(Map<String, dynamic> geometry) {
-    final geometryType = geometry['type'].toString();
-    final coordinates = geometry['coordinates'];
+  Expression buildMultiPolygonInstance(Iterable<Iterable<Iterable<List<num>>>> multiPolygons) {
     final multiPolygonRefer = refer('MultiPolygon');
-    switch (geometryType) {
-      case 'MultiPolygon':
-        final List<Expression> polygons = [];
-        for (final geoPolygons in coordinates) {
-          final polygon = buildPolygonInstance(geoPolygons);
-          polygons.add(polygon);
-        }
-        return multiPolygonRefer.newInstance([literalList(polygons)]);
-      case 'Polygon':
-        final polygon = buildPolygonInstance(coordinates);
-        return multiPolygonRefer.newInstance([literalList([polygon])]);
-      default:
-        throw 'The geometry type: $geometryType is not supported';
+    final List<Expression> polygons = [];
+    for (final geoPolygons in multiPolygons) {
+      final polygon = buildPolygonInstance(geoPolygons);
+      polygons.add(polygon);
     }
+    return multiPolygonRefer.newInstance([literalList(polygons)]);
   }
 
-  Expression buildPolygonInstance(List<dynamic> geoPolygons) {
+  Expression buildPolygonInstance(Iterable<Iterable<List<num>>> geoPolygons) {
     late Expression outer;
     final List<Expression> inner = [];
     final polygonRefer = refer('Polygon');
-    final polygonGeometry = geoPolygons.map<Iterable<List<num>>>(
-            (e) => (e as Iterable).map<List<num>>((e) => e.cast<num>()),
-          );
-    final iterator = polygonGeometry.iterator;
+    final iterator = geoPolygons.iterator;
     iterator.moveNext();
     outer = buildRingInstance(iterator.current);
     while(iterator.moveNext()) {
@@ -147,19 +148,18 @@ class GeoFeatureBuilder implements Builder{
     final List<Parameter> constructorParameters = [];
     propertiesToExtract.forEach((key, value) { 
       classFields.add(Field((b) => b
-          ..modifier = FieldModifier.final$
-          ..name = ReCase(key).camelCase 
-          ..type = Reference(value,'dart:core').type
+        ..modifier = FieldModifier.final$
+        ..name = ReCase(key).camelCase 
+        ..type = Reference(value,'dart:core').type
         )
       );
       constructorParameters.add(Parameter((b) => b
-          ..name = ReCase(key).camelCase
-          ..named = true
-          ..toThis = true
-          )
+        ..name = ReCase(key).camelCase
+        ..named = true
+        ..toThis = true
+        )
       );
     });
-
     final geoFeatureClass = ClassBuilder()
       ..name = 'GeoFeature'
       ..extend = refer('GeoFeatureBase')

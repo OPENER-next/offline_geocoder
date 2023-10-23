@@ -1,4 +1,4 @@
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:example/offline_geocoder/offline_geocoder.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -21,10 +21,7 @@ Future<void> main() async {
     final country = entry.key;
     final coordinate = entry.value;
     final result = GeoCoder.getFromLocation(coordinate);
-    var actualCountryCode = '';
-    if (result != null) {
-      actualCountryCode = result.isoA2;
-    }
+    final actualCountryCode = result?.isoA2 ?? '';
     test('Test for country $country', () {
       expect(actualCountryCode, country);
     });

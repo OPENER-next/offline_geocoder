@@ -25,31 +25,29 @@ class GeoFeatureBuilder implements Builder{
         final propertiesToExtract = options.config['extract_properties'].map<String,String>(
             (key, value) => MapEntry<String, String>(key.toString(), value.toString())
         );
-        final geoFeatureList = buildGeoFeatureListInstance(geoJSONData, propertiesToExtract);
-        final code = generateFileCode(geoFeatureList,propertiesToExtract);
+        final code = generateFileCode(geoJSONData,propertiesToExtract);
         final outputId = AssetId(inputId.package, inputId.path
           .replaceFirst(options.config['source_file'],options.config['output_file'])
         );
         await buildStep.writeAsString(outputId, code);
     } catch (e) {
-        print('Failed to generate class: $e');
+        throw 'Failed to generate GeoCoder class: $e';
     }
   }
 
-  String generateFileCode(LiteralListExpression geoFeatureList, Map<String, String> propertiesToExtract){
-    final geoFeatureClass = buildGeoFeatureClass(propertiesToExtract);
-    final geoCoderClass = buildGeoCoderClass(geoFeatureList);
+  String generateFileCode(Map<String, dynamic> geoJSONData, Map<String, String> propertiesToExtract){
     final library = Library((b) => b
       ..directives.add(Directive.import('package:offline_geocoder/offline_geocoder.dart'))
       ..directives.add(Directive.import('package:latlong2/latlong.dart'))
-      ..body.addAll([geoFeatureClass, geoCoderClass]
-    ));
+      ..body.add(buildGeoFeatureClass(geoJSONData, propertiesToExtract))
+      ..body.add(buildGeoCoderClass(geoJSONData, propertiesToExtract))
+    );
     final dartfmt = DartFormatter();
     return dartfmt.format('${library.accept(DartEmitter.scoped())}').toString();
   }
 
   Future<Map<String, dynamic>> _readFile(File inputFile) async {
-    if (!inputFile.existsSync()) {
+    if (!(await inputFile.exists())) {
       throw FileSystemException('The file ${inputFile.path} does not exist');
     }
     String data;
@@ -69,28 +67,30 @@ class GeoFeatureBuilder implements Builder{
       final List<Expression> geoFeatureParameters = [];
       if (featureData.containsKey('properties')) {
         final featureProperties = featureData['properties'];
-        for (final key in propertiesToExtract.keys) {
-          propertiesToExtract[key] == 'String' 
-          ? geoFeatureParameters.add(refer('"${featureProperties[key]}"'))
-          : geoFeatureParameters.add(refer('${featureProperties[key]}'));
+        for (final entry in propertiesToExtract.entries) {
+          geoFeatureParameters.add(refer(
+            entry.value == 'String'
+              ? '"${featureProperties[entry.key]}"'
+            : '${featureProperties[entry.key]}',
+          ));
         }
       }
       final geometry = featureData['geometry'];
       final geometryType = geometry['type'].toString();
-      final coordinates = geometry['coordinates'] as List<dynamic>;
+      final coordinatesGeoJSON = geometry['coordinates'] as List<dynamic>;
       switch (geometryType) {
         case 'MultiPolygon':
-          final multiPolygons = coordinates.map<Iterable<Iterable<List<num>>>>(
+          final coordinates = coordinatesGeoJSON.map<Iterable<Iterable<List<num>>>>(
             (e) => (e as Iterable).map<Iterable<List<num>>>(
               (e) => (e as Iterable).map<List<num>>((e) => e.cast<num>()),
             )
           );
-          geoFeatureParameters.add(buildMultiPolygonInstance(multiPolygons));
+          geoFeatureParameters.add(buildMultiPolygonInstance(coordinates));
         case 'Polygon':
-          final geoPolygons = coordinates.map<Iterable<List<num>>>(
+          final coordinates = coordinatesGeoJSON.map<Iterable<List<num>>>(
             (e) => (e as Iterable).map<List<num>>((e) => e.cast<num>()),
           );
-          geoFeatureParameters.add(buildPolygonInstance(geoPolygons));
+          geoFeatureParameters.add(buildPolygonInstance(coordinates));
         default:
           throw 'The geometry type: $geometryType is not supported';
       }
@@ -99,23 +99,18 @@ class GeoFeatureBuilder implements Builder{
     return literalList(geoFeatureList);
   }
 
-  Expression buildMultiPolygonInstance(Iterable<Iterable<Iterable<List<num>>>> multiPolygons) {
+  Expression buildMultiPolygonInstance(Iterable<Iterable<Iterable<List<num>>>> coordinates) {
     final multiPolygonRefer = refer('MultiPolygon');
-    final List<Expression> polygons = [];
-    for (final geoPolygons in multiPolygons) {
-      final polygon = buildPolygonInstance(geoPolygons);
-      polygons.add(polygon);
-    }
+    final polygons = coordinates.map(buildPolygonInstance);
     return multiPolygonRefer.newInstance([literalList(polygons)]);
   }
 
-  Expression buildPolygonInstance(Iterable<Iterable<List<num>>> geoPolygons) {
-    late Expression outer;
+  Expression buildPolygonInstance(Iterable<Iterable<List<num>>> coordinates) {
     final List<Expression> inner = [];
     final polygonRefer = refer('Polygon');
-    final iterator = geoPolygons.iterator;
+    final iterator = coordinates.iterator;
     iterator.moveNext();
-    outer = buildRingInstance(iterator.current);
+    final outer = buildRingInstance(iterator.current);
     while(iterator.moveNext()) {
       inner.add(buildRingInstance(iterator.current));
     } 
@@ -127,14 +122,11 @@ class GeoFeatureBuilder implements Builder{
     }
   }
 
-  Expression buildRingInstance(Iterable<List<num>>coordinates) {
+  Expression buildRingInstance(Iterable<List<num>> coordinates) {
     final ringRefer = refer('Ring');
-    final List<Expression> listPoints = [];
-    for(final geoPoint in coordinates){
-      final latitude = geoPoint[1];
-      final longitude = geoPoint[0];
-      listPoints.add(buildLatLngInstance(latitude, longitude));
-    }
+    final listPoints = coordinates.map(
+      (geoPoint) => buildLatLngInstance(geoPoint[1], geoPoint[0]),
+    );
     return ringRefer.newInstance([literalList(listPoints)]);
   }
 
@@ -143,7 +135,7 @@ class GeoFeatureBuilder implements Builder{
     return latLngRef.newInstance([literalNum(latitude),literalNum(longitude)]);
   }
 
-  Class buildGeoFeatureClass(Map<String, String> propertiesToExtract) {
+  Class buildGeoFeatureClass(Map<String, dynamic> geoJSONData, Map<String, String> propertiesToExtract) {
     final List<Field> classFields = [];
     final List<Parameter> constructorParameters = [];
     propertiesToExtract.forEach((key, value) { 
@@ -176,7 +168,8 @@ class GeoFeatureBuilder implements Builder{
     return geoFeatureClass.build();
   }
 
-  Class buildGeoCoderClass(LiteralListExpression geoFeatureList) {
+  Class buildGeoCoderClass(Map<String, dynamic> geoJSONData, Map<String, String> propertiesToExtract) {
+    final geoFeatureList = buildGeoFeatureListInstance(geoJSONData, propertiesToExtract);
     final geoCoderClass = ClassBuilder()
       ..name = 'GeoCoder'
       ..fields.add(Field((b) => b
@@ -191,7 +184,8 @@ class GeoFeatureBuilder implements Builder{
         ..returns = refer('GeoFeature?')
         ..requiredParameters.add(Parameter((b) => b
           ..name = 'point'
-          ..type = refer('LatLng')))
+          ..type = refer('LatLng')
+        ))
         ..body = refer('firstGeoFeatureContainingPoint<GeoFeature>')
           .call([refer('point'), refer('geoFeatures')]).code
       ))

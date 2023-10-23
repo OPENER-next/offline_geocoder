@@ -13,9 +13,6 @@ dependencies:
   build: ^2.4.1
   dart_style: ^2.3.3
   recase: ^4.1.0
-  yaml: ^3.1.2
   
 dev_dependencies:
   lints: ^2.0.0
-  test: ^1.21.0
-

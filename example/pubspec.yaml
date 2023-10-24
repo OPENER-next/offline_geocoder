@@ -10,7 +10,6 @@ dependencies:
   offline_geocoder:
     path: ../
   latlong2: ^0.9.0
-  build_test: ^2.2.1
 
 dev_dependencies:
   flutter_lints: ^2.0.0

@@ -1,8 +1,8 @@
-/// Support for doing something awesome.
-///
-/// More dartdocs go here.
-library;
+library offline_geocoder;
+export '/src/geo_feature_base.dart';
+export '/src/area.dart';
 
-export 'src/offline_geocoder_base.dart';
+import 'package:build/build.dart';
+import 'build/geo_feature_builder.dart';
 
-// TODO: Export any libraries intended for clients of this package.
+Builder geoFeatureBuilder(BuilderOptions options) => GeoFeatureBuilder(options);

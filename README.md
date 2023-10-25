@@ -2,6 +2,10 @@
 
 An agnostic package to reverse geocode locations from a presupplied `geojson` file. No internet connection or external services required as your geocoder is generated once ahead of time.
 
+## How does it work
+
+This uses dart's build tools to pregenerated source code from a GeoJSON file. The GeoJSON is converted into constant code on compile time wherefore no parsing or loading has to be done at runtime. The package allows you to specify which [GeoJSON properties](https://geojson.org/geojson-spec#feature-objects) you want to extract and turns them into typed class properties.
+
 ## Usage
 
 ### 1. Get your source GeoJSON `FeatureCollection`
@@ -46,7 +50,7 @@ targets:
           source_file: 'assets/ne_110m_admin_0_countries.geojson'
           # define the output location of the generated GeoCoder dart file
           output_file: 'lib/services/offline_geocoder.dart'
-          # specify which properties you want to extract from the GeoJSON including their dart type
+          # specify which properties you want to extract from the GeoJSON including their data type
           extract_properties: {"NAME": "String", "LEVEL": "int"}
 ```
 

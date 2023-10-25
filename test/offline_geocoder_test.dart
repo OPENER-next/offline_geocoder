@@ -20,7 +20,7 @@ void main() {
 
   for (final MapEntry(key: countryData, value: coordinate) in coordinatesByCity.entries) {
     final result = GeoCoder.getFromLocation(coordinate);
-    test('Test country: ${country.$1}', () {
+    test('Test country: ${countryData.$1}', () {
       expect(result?.name, countryData.$1);
       expect(result?.isoA2, countryData.$2);
       expect(result?.level, countryData.$3);

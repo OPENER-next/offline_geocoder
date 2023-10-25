@@ -5,4 +5,4 @@ targets:
         options:
           source_file: 'assets/ne_110m_admin_0_countries.geojson'
           output_file: 'lib/offline_geocoder/offline_geocoder.dart'
-          extract_properties: {"SOVEREIGNT": "String", "ISO_A2": "String", "LEVEL": "int"}
+          extract_properties: {"NAME": "String", "ISO_A2": "String", "LEVEL": "int"}

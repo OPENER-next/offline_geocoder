@@ -2,7 +2,7 @@ builders:
   offline_geocoder:
     import: package:offline_geocoder/offline_geocoder.dart
     builder_factories: ['geoFeatureBuilder']
-    build_extensions: 
+    build_extensions:
       .geojson:
         - .dart
     build_to: source
@@ -11,3 +11,15 @@ builders:
       options:
         output_file: 'lib/offline_geocoder.dart'
         extract_properties: {}
+
+# register builder for tests
+# run with: dart run build_runner test
+targets:
+  $default:
+    builders:
+      offline_geocoder:
+        options:
+          # reuse data from example
+          source_file: 'example/assets/ne_110m_admin_0_countries.geojson'
+          output_file: 'test/offline_geocoder.dart'
+          extract_properties: {"NAME": "String", "ISO_A2": "String", "LEVEL": "int"}

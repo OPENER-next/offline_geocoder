@@ -1,0 +1,26 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+  # Allow running this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+
+  test:
+    name: Test offline_geocoder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout offline_geocoder package
+        uses: actions/checkout@v3
+
+      - name: Setup dart SDK
+        uses: dart-lang/setup-dart@v1
+
+      - name: Get dependencies
+        run: dart pub get
+
+      - name: Run tests
+        run: dart run build_runner test

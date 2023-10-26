@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   latlong2: ^0.9.0
+  flatbush_dart: ^1.2.2
   build: ^2.4.1
   code_builder: ^4.7.0
   dart_style: ^2.3.3

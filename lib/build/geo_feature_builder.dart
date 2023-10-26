@@ -5,7 +5,9 @@ import 'package:build/build.dart';
 import 'package:code_builder/code_builder.dart';
 import 'package:dart_style/dart_style.dart';
 import 'package:recase/recase.dart';
+import 'package:flatbush_dart/flatbush_dart.dart';
 
+import 'latlng_bounds.dart';
 
 Builder geoFeatureBuilder(BuilderOptions options) => GeoFeatureBuilder(options);
 
@@ -102,6 +104,7 @@ class GeoFeatureBuilder implements Builder{
 
   Class buildGeoCoderClass(Map<String, dynamic> geoJSONData, Map<String, String> propertiesToExtract) {
     final features = geoJSONData['features'].cast<Map<String, dynamic>>();
+    final geoflatbushInstance = buildGeoflatbushInstance(features);
     final geoFeatureList = buildGeoFeatureListInstance(features, propertiesToExtract);
 
     return Class((b) => b
@@ -113,6 +116,12 @@ class GeoFeatureBuilder implements Builder{
         ..static = true
         ..assignment = geoFeatureList.code
       ))
+      ..fields.add(Field((b) => b
+        ..name = '_flatbushData'
+        ..modifier = FieldModifier.final$
+        ..static = true
+        ..assignment = geoflatbushInstance.code
+      ))
       ..methods.add(Method((b) => b
         ..name = 'getFromLocation'
         ..static = true
@@ -122,9 +131,56 @@ class GeoFeatureBuilder implements Builder{
           ..type = refer('LatLng', 'package:latlong2/latlong.dart')
         ))
         ..body = refer('firstGeoFeatureContainingPoint<GeoFeature>', _src)
-          .call([refer('point'), refer('geoFeatures')]).code,
+          .call([
+            refer('point'), refer('geoFeatures'), refer('_flatbushData'),
+          ]).code,
       )),
     );
+  }
+
+  /// 1. Calculates flatbush indexes
+  /// 2. Stores all indexes as a base64 string
+  /// 3. Builds a `Geoflatbush` instance that consumes the previous calculated index data
+  /// ```dart
+  /// Geoflatbush(
+  ///   (Flatbush.from(
+  ///     base64Decode(r'data_string'.buffer
+  ///   ) as Flatbush<TypedData, double>)
+  /// )
+  /// ```
+  Expression buildGeoflatbushInstance(List<Map<String, dynamic>> features) {
+    // double64 to store precise lat lng
+    final flatbush = Flatbush.double64(features.length, nodeSize: 3);
+    for (final feature in features) {
+      final bounds = LatLngBounds.fromGeoJsonGeometry(feature['geometry']);
+      flatbush.add(
+        minX: bounds.minX, minY: bounds.minY,
+        maxX: bounds.maxX, maxY: bounds.maxY,
+      );
+    }
+    flatbush.finish();
+    // convert flatbush index to base64 string so it can be easily stored in code.
+    final base64DataString = base64Encode(flatbush.data.asUint8List());
+
+    final flatbushPackage = 'package:flatbush_dart/flatbush_dart.dart';
+    final geoFlatbushRef = refer('Geoflatbush', flatbushPackage);
+    final flatbushFromRef = refer('Flatbush.from', flatbushPackage);
+    final flatbushTypedRef = TypeReference((b) => b
+      ..symbol = 'Flatbush'
+      ..url = flatbushPackage
+      ..types.add(refer('TypedData', 'dart:typed_data'))
+      ..types.add(refer('double'),
+    ));
+    final base64DecodeRef = refer('base64Decode', 'dart:convert');
+
+    return geoFlatbushRef.newInstance([
+      flatbushFromRef.call([
+        base64DecodeRef.call([
+          literalString(base64DataString, raw: true),
+        ]).property('buffer'),
+      // required because type cannot be inferred correctly
+      ]).asA(flatbushTypedRef),
+    ]);
   }
 
   /// Builds `[ GeoFeature(...), GeoFeature(...), ... ]`

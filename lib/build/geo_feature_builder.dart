@@ -128,7 +128,7 @@ class GeoFeatureBuilder implements Builder{
         ..returns = refer('GeoFeature?')
         ..requiredParameters.add(Parameter((b) => b
           ..name = 'point'
-          ..type = refer('LatLng', 'package:latlong2/latlong.dart')
+          ..type = refer('LatLng', _src)
         ))
         ..body = refer('firstGeoFeatureContainingPoint<GeoFeature>', _src)
           .call([
@@ -162,12 +162,11 @@ class GeoFeatureBuilder implements Builder{
     // convert flatbush index to base64 string so it can be easily stored in code.
     final base64DataString = base64Encode(flatbush.data.asUint8List());
 
-    final flatbushPackage = 'package:flatbush_dart/flatbush_dart.dart';
-    final geoFlatbushRef = refer('Geoflatbush', flatbushPackage);
-    final flatbushFromRef = refer('Flatbush.from', flatbushPackage);
+    final geoFlatbushRef = refer('Geoflatbush', _src);
+    final flatbushFromRef = refer('Flatbush.from', _src);
     final flatbushTypedRef = TypeReference((b) => b
       ..symbol = 'Flatbush'
-      ..url = flatbushPackage
+      ..url = _src
       ..types.add(refer('TypedData', 'dart:typed_data'))
       ..types.add(refer('double'),
     ));
@@ -262,7 +261,7 @@ class GeoFeatureBuilder implements Builder{
   /// Builds `LatLng(...)`
 
   Expression buildLatLngInstance(num latitude, num longitude) {
-    final latLngRef = refer('LatLng', 'package:latlong2/latlong.dart');
+    final latLngRef = refer('LatLng', _src);
     return latLngRef.newInstance([literalNum(latitude),literalNum(longitude)]);
   }
 }

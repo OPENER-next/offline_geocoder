@@ -37,8 +37,10 @@ class GeoFeatureBuilder implements Builder{
       final library = Library((b) => b
         ..body.add(buildGeoFeatureClass(propertiesToExtract))
         ..body.add(buildGeoCoderClass(geoJSONData, propertiesToExtract))
+        // Workaround for https://github.com/dart-lang/code_builder/issues/436
+        ..ignoreForFile.add('unnecessary_parenthesis')
       );
-      final code = DartFormatter().format(library.accept(
+      final code = DartFormatter(fixes: StyleFix.all).format(library.accept(
         DartEmitter(allocator: Allocator()),
       ).toString());
 

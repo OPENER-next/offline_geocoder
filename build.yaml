@@ -1,6 +1,6 @@
 builders:
   offline_geocoder:
-    import: package:offline_geocoder/offline_geocoder.dart
+    import: package:offline_geocoder/build.dart
     builder_factories: ['geoFeatureBuilder']
     build_extensions:
       .geojson:

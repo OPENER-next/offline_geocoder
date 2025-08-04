@@ -5,4 +5,3 @@ export 'package:flatbush_dart/flatbush_dart.dart';
 
 export '/src/geo_feature_base.dart';
 export '/src/area.dart';
-export '/build/geo_feature_builder.dart';

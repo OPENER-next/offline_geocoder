@@ -40,7 +40,7 @@ class GeoFeatureBuilder implements Builder{
         ..body.add(buildGeoFeatureClass(propertiesToExtract))
         ..body.add(buildGeoCoderClass(geoJSONData, propertiesToExtract))
       );
-      final code = DartFormatter(fixes: StyleFix.all).format(library.accept(
+      final code = DartFormatter(languageVersion: DartFormatter.latestLanguageVersion).format(library.accept(
         DartEmitter(allocator: Allocator()),
       ).toString());
 

@@ -6,6 +6,7 @@ import 'package:code_builder/code_builder.dart';
 import 'package:dart_style/dart_style.dart';
 import 'package:recase/recase.dart';
 import 'package:flatbush_dart/flatbush_dart.dart';
+import 'package:pub_semver/pub_semver.dart';
 
 import 'latlng_bounds.dart';
 
@@ -40,7 +41,7 @@ class GeoFeatureBuilder implements Builder{
         ..body.add(buildGeoFeatureClass(propertiesToExtract))
         ..body.add(buildGeoCoderClass(geoJSONData, propertiesToExtract))
       );
-      final code = DartFormatter(fixes: StyleFix.all).format(library.accept(
+      final code = DartFormatter(languageVersion: Version(3, 8, 0)).format(library.accept(
         DartEmitter(allocator: Allocator()),
       ).toString());
 
